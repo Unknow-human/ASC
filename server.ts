@@ -121,10 +121,15 @@ if (existingReviews.count === 0) {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(cors());
   app.use(express.json());
+
+  // Health check
+  app.get('/api/health', (req, res) => {
+    res.json({ status: 'ok', node_env: process.env.NODE_ENV, port: PORT });
+  });
 
   // Admin Middleware
   const adminAuth = (req: any, res: any, next: any) => {
