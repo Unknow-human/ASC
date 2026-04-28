@@ -1,4 +1,5 @@
 import express from 'express';
+console.log('[Server] Initializing...');
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import cors from 'cors';
@@ -19,6 +20,14 @@ async function syncToSupabase(key: string, value: any) {
 }
 
 const db = new Database('reservations.db');
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Process] Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[Process] Uncaught Exception:', err);
+});
 
 // Initialize Database Schema
 db.exec(`
@@ -125,6 +134,12 @@ async function startServer() {
 
   app.use(cors());
   app.use(express.json());
+
+  // Request logging middleware
+  app.use((req, res, next) => {
+    console.log(`[Request] ${req.method} ${req.url}`);
+    next();
+  });
 
   // Health check
   app.get('/api/health', (req, res) => {
@@ -455,6 +470,12 @@ async function startServer() {
     res.json({ success: true, id });
   });
 
+  // API 404 Handler - MUST be after all API routes but before Vite/Static
+  app.all('/api/*', (req, res) => {
+    console.warn(`[Server] API 404: ${req.method} ${req.url}`);
+    res.status(404).json({ error: 'API route not found', path: req.url });
+  });
+
   // --- VITE MIDDLEWARE ---
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -464,14 +485,30 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    const fs = await import('fs');
+    if (fs.existsSync(distPath)) {
+      console.log(`[Server] Serving static files from: ${distPath}`);
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        const indexPath = path.join(distPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          console.error(`[Server] index.html missing at ${indexPath}`);
+          res.status(404).send('Index file not found. Please run build.');
+        }
+      });
+    } else {
+      console.error(`[Server] dist folder missing at ${distPath}`);
+      app.get('*', (req, res) => {
+        res.status(404).send('Dist folder not found. Please run build.');
+      });
+    }
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`[Server] Listening on 0.0.0.0:${PORT}`);
+    console.log(`[Server] Environment: ${process.env.NODE_ENV}`);
   });
 }
 
