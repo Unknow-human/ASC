@@ -477,7 +477,9 @@ async function startServer() {
   });
 
   // --- VITE MIDDLEWARE ---
-  if (process.env.NODE_ENV !== 'production') {
+  const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -485,7 +487,7 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    const fs = await import('fs');
+    const { default: fs } = await import('fs');
     if (fs.existsSync(distPath)) {
       console.log(`[Server] Serving static files from: ${distPath}`);
       app.use(express.static(distPath));
